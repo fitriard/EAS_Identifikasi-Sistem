@@ -11,6 +11,8 @@
 %   7. Evaluasi MSE, RMSE, MAE, MAPE
 %   8. Cek residu dengan Ljung-Box (white noise test)
 %   9. Buat model matematika
+%   10. Statistik Residu
+%   11. Plot Residu Detail
 % ===========================================
 clc; % clear; close all;
 
@@ -414,6 +416,14 @@ else
     e_test = e_id_test.y(:);
 end
 
+% Ekstrak residu dari data TRAIN
+e_id_train = resid(best_model, data_train);
+if isprop(e_id_train, 'OutputData')
+    e_train = e_id_train.OutputData(:);
+else
+    e_train = e_id_train.y(:);
+end
+
 % Uji Ljung-Box untuk white noise
 n_lags = min(20, length(e_test)-1);
 [h_lb, pValue_lb] = lbqtest(e_test, 'Lags', n_lags);
@@ -440,10 +450,15 @@ else
 end
 fprintf('========================================\n\n');
 
-% Plot analisis residu
-figure('Name', '8. Residual Analysis');
+% Plot analisis residu TRAIN
+figure('Name', '8a. Residual Analysis - TRAIN');
+resid(best_model, data_train);
+sgtitle('Analisis Residu Model ARX - DATA TRAIN', 'FontWeight', 'bold', 'FontSize', 12);
+
+% Plot analisis residu TEST
+figure('Name', '8b. Residual Analysis - TEST');
 resid(best_model, data_test);
-sgtitle('Analisis Residu Model ARX', 'FontWeight', 'bold', 'FontSize', 12);
+sgtitle('Analisis Residu Model ARX - DATA TEST', 'FontWeight', 'bold', 'FontSize', 12);
 
 %% ===========================================
 % 9. BUAT MODEL MATEMATIKA
@@ -525,49 +540,67 @@ end
 fprintf(' + e(k)\n');
 fprintf('========================================\n\n');
 
-%% ===========================================
-% RINGKASAN AKHIR
-% ============================================
+%% ------------------------------------------------
+% 10. STATISTIK RESIDU
+%% ------------------------------------------------
+mu_e    = mean(e_test);
+sigma_e = std(e_test);
+skew_e  = skewness(e_test);
+kurt_e  = kurtosis(e_test);
+
+%% ------------------------------------------------
+% 11. PLOT RESIDU DETAIL
+%% ------------------------------------------------
+figure('Name','Analisis Residu Model ARX - TEST',...
+       'Units','normalized','Position',[0.05 0.05 0.9 0.85]);
+
+% --- (1) Time series residu ---
+subplot(2,2,1);
+plot(e_test,'b','LineWidth',0.8); hold on;
+yline(0,'k--','LineWidth',1.2);
+yline(mu_e + 2*sigma_e,'r--');
+yline(mu_e - 2*sigma_e,'r--');
+grid on;
+xlabel('Sampel k');
+ylabel('Residu e(k)');
+title('Time Series Residu TEST','FontWeight','bold');
+
+% --- (2) Histogram + Normal PDF ---
+subplot(2,2,2);
+histogram(e_test,30,'Normalization','pdf',...
+          'FaceColor',[0.3 0.6 0.9],'EdgeColor','k');
+hold on;
+x = linspace(min(e_test),max(e_test),200);
+plot(x,normpdf(x,mu_e,sigma_e),'r','LineWidth',2);
+grid on;
+xlabel('Nilai Residu');
+ylabel('Densitas');
+title(sprintf('Histogram Residu\n\\mu=%.4f, \\sigma=%.4f',...
+      mu_e,sigma_e),'FontWeight','bold');
+legend('Residu','Normal','Location','best');
+
+% --- (3) Autokorelasi (ACF) ---
+subplot(2,2,3);
+[acf_vals,lags,bounds] = autocorr(e_test,'NumLags',maxLag);
+stem(lags,acf_vals,'filled','MarkerSize',4);
+hold on;
+plot([0 maxLag],[bounds(1) bounds(1)],'r--','LineWidth',1);
+plot([0 maxLag],[bounds(2) bounds(2)],'r--','LineWidth',1);
+grid on;
+xlabel('Lag');
+ylabel('ACF');
+title('Autokorelasi Residu','FontWeight','bold');
+ylim([-1 1]);
+
+% --- (4) Q-Q Plot ---
+subplot(2,2,4);
+qqplot(e_test);
+grid on;
+title(sprintf('Q-Q Plot\nSkew=%.3f | Kurt=%.3f',...
+      skew_e,kurt_e),'FontWeight','bold');
+
+sgtitle('ANALISIS RESIDU MODEL ARX (DATA TEST)',...
+        'FontWeight','bold','FontSize',14);
+
+fprintf('✓ Analisis residu ARX selesai.\n');
 fprintf('========================================\n');
-fprintf('RINGKASAN HASIL IDENTIFIKASI SISTEM ARX\n');
-fprintf('========================================\n');
-fprintf('Data:\n');
-fprintf('  Jumlah sampel       : %d\n', N);
-fprintf('  Data stasioner      : %s\n', ternary(is_detrended, 'Ya (detrended)', 'Ya (asli)'));
-fprintf('  Train / Test        : %d / %d sampel\n\n', idx_split, N_stat-idx_split);
-
-fprintf('Model Terbaik:\n');
-fprintf('  Struktur            : ARX [%d %d %d]\n', best_order);
-fprintf('  AIC                 : %.4f\n\n', best_aic);
-
-fprintf('Performa Train:\n');
-fprintf('  FIT                 : %.2f %%\n', fit_train);
-fprintf('  MSE                 : %.6f\n', MSE_train);
-fprintf('  RMSE                : %.6f\n', RMSE_train);
-fprintf('  MAE                 : %.6f\n', MAE_train);
-fprintf('  MAPE                : %.4f %%\n\n', MAPE_train);
-
-fprintf('Performa Test:\n');
-fprintf('  FIT                 : %.2f %%\n', fit_test);
-fprintf('  MSE                 : %.6f\n', MSE_test);
-fprintf('  RMSE                : %.6f\n', RMSE_test);
-fprintf('  MAE                 : %.6f\n', MAE_test);
-fprintf('  MAPE                : %.4f %%\n\n', MAPE_test);
-
-fprintf('Validasi Residu:\n');
-fprintf('  Ljung-Box p-value   : %.4f\n', pValue_lb);
-fprintf('  Residu white noise  : %s\n', ternary(h_lb==0, 'YA ✓', 'TIDAK ✗'));
-fprintf('  Status model        : %s\n', ternary(h_lb==0, 'BAIK ✓', 'PERLU PERBAIKAN ✗'));
-
-fprintf('========================================\n');
-fprintf('IDENTIFIKASI SISTEM SELESAI!\n');
-fprintf('========================================\n');
-
-%% Helper function
-function result = ternary(condition, true_val, false_val)
-    if condition
-        result = true_val;
-    else
-        result = false_val;
-    end
-end
